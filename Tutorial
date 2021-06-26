@@ -1,0 +1,79 @@
+Stencil Buffer cho Unity HDRP
+Stencil Buffer có thể nói là một thứ khá quan trọng đối với việc làm non-euclidean game, nó có thể dễ dàng được xây dựng nếu bạn đang dùng Built-in Render Pipeline, URP, LWRP và bạn hoàn toàn có thể tìm những tutorial trên mạng để sử dụng Stencil Buffer trên những mảng Render Pipeline này. Sau đây là một số tutorial tiêu biểu:
+https://www.youtube.com/watch?v=-NB2TR8IjE8 
+https://www.youtube.com/watch?v=SYx5R92I4mo  (lưu ý là trong tutorial này sử dụng Comp NotEqual (nó sẽ chỉ có tác dụng khi bạn dùng chỉ 1 portal, khi dùng nhiều portal bạn sẽ cần các ref khác nhau) nên mình khuyên các bạn dùng Ref của Portal và Ref của vật trong Portal là bằng nhau và dùng comp Equal)
+https://www.youtube.com/watch?v=zlj2-fnFvF4 
+Nhưng mọi chuyện sẽ khác đi nếu bạn dùng HDRP, khi các bạn theo những tutorial này, trước tiên bạn bắt buộc phải dùng Comp NotEqual, thứ hai là khi dùng Surface Type là Opaque nó sẽ xuất hiện những hình thù khác kì dị, còn nếu dùng Transparent thì tất nhiên là không ổn nếu bạn không muốn các vật trong đó là trong suốt. 
+Vậy thì phải làm thế nào, nếu project bạn đang là HDRP? Trước tiên, đáng tiếc khi phải nói, mình chưa tìm được giải pháp tối ưu cho vấn đề này, khi nếu làm giống mình, các bạn sẽ không nên có những object MeshRenderer xung quanh nơi bạn chứa portal đó (gọi chung những tấm màn có thể nhìn những vật trong đó mà khi không nhìn vào tấm màn đó thì không những được những vật ở trong đó) hoặc chí ít là camera sẽ không nhận thấy được vật gì cùng đường thẳng của tâm camera đến vật trong portal. Bạn có thể khắc phục lỗi này bằng cách sử dụng HDRI Sky một cách hợp lý để cho người chơi vẫn có trải nghiệm tốt khi không có mô hình mặt đất và environment xung quanh. Có thể ta khắc phục những lỗi này bằng tự code riêng cho mình một Custom Pass, còn mình thì chưa đủ trình độ nên chỉ có thể làm tới đây thôi.
+Bước 1:
+Vào Edit -> Project Settings… -> Quality -> HDRP -> HDRenderPipelineAsset -> Rendering -> Lit Shader Mode, chọn Forward Only1.
+Bước 2:
+Tạo một Custom Pass trong Hierarchy bằng cách chọn GameObject -> Volume -> Custom Pass, sau đó mục Injection Point trong Custom Pass chọn Before Rendering2, và Sorting chọn thêm Common Transparent3.
+Bước 3: Tạo Shader cho tấm màn Portal
+Trước tiên, bạn nên tạo một folder mới, đặt tên gì tùy bạn, và tạo một shader mới trong đó, bằng cách Assets -> Create -> Shader -> Standard Surface Shader, vì có nhiều Portal khác nhau nên mình sẽ đặt của mình là Portal1, và sau đây là script của Shader Portal1.
+Shader "Custom/Portal1"{
+	SubShader{
+		Zwrite off
+		ColorMask 0
+		Cull off
+
+		Stencil{
+		Ref 1
+		Pass replace
+		}
+		Pass{
+
+		}
+	}
+}
+
+Ref ở đây bạn để tùy ý bạn, để cho dễ sử dụng thì cứ đặt theo tên của Shader. Bạn cứ làm tương tự cho tới đủ số lượng Shader bạn muốn.
+Bước 4: Tạo Shader cho những vật nằm trong từng mỗi Portal
+Bạn tìm một vật nào đó có một Material chứa Shader là HDRP/Lit và bấm vào nút Edit… bên cạnh, bạn copy hết tất cả dòng code của Shader đó và tạo một Standard Surface Shader mới và Paste lại hết, và bạn nhớ ở dòng đầu tiên nên sửa lại tên của Shader cho dễ phân biệt, ví dụ: Shader "Custom/InsidePortal1"
+Sau đó bạn kéo xuống tới dòng chứa chữ SubShader đầu tiền, của mình thì ở dòng 333, dưới dòng Tags và trên dòng Pass ghi như thế này: 
+Stencil{
+            Ref 1
+            Comp Equal
+}
+Sau đó bạn bấm Ctrl+F, tìm chữ Stencil vào và comment hết4 bằng Ctrl+K Ctrl+C (ngoài cái đã được nhắc ở trên) ví dụ:
+/*Stencil
+        {
+            WriteMask[_StencilWriteMaskGBuffer]
+            Ref[_StencilRefGBuffer]
+            Comp Always
+            Pass Replace
+        }*/
+Khi này, shader của bạn sẽ hoạt động gần như hoàn toàn giống với Shader Lit, nhưng giờ chỉ có thể nhìn thấy được qua Portal mà thôi.
+Bước 5: Tạo Collider và Trigger
+Khi xong bước 4, khi Camera và một Portal A này cùng một Portal B kia cùng một đường thẳng và không có vật có shader InsidePortalA ngăn cản không cho thấy Portal B lại thì sẽ sinh ra những hình thù quái dị, vì thế ta cần collider cho fpscontroller hoặc camera của mình và các Trigger để SetActive cái portal này false portal kia true để có được trải nghiệm tốt nhất. Sau đây 1 là một ví dụ trong tình huống của mình:
+
+Bước 6: Làm một portal thực thụ
+Vì là một portal, nên khi bạn đi qua nó, thì các vật có shader InsidePortal đó phải đổi lại thành shader Lit chứ đúng không? Ta tạo một script và apply vào Trigger của Portal như sau:
+
+using UnityEngine;
+
+public class ChangeShaderInsidePortal : MonoBehaviour
+{
+    [SerializeField] public Renderer[] insidePortal;
+    private void OnTriggerEnter(Collider other)
+    {
+        if(other.tag == "MainCamera")
+        {
+            for(int i = 0; i < insidePortal.Length; i++)
+            {
+                insidePortal[i].material.shader = Shader.Find("HDRP/Lit");
+            }
+        }
+    }
+}
+Và cơ bản thế là xong! Mặc dù không được đầy đủ như khi dùng các Render Pipeline khác nhưng ta hoàn toàn vẫn có thể làm được. Nếu bạn có cách làm tối ưu và hoàn hảo hơn mong bạn hãy đóng góp các giải pháp!
+Giải thích chú thích:
+ 
+ 
+
+
+
+
+
+
+
